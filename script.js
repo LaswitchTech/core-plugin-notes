@@ -1,10 +1,3 @@
-//
-//   Core Framework - Script file
-//
-//   @license    MIT (https://mit-license.org/)
-//   @author     Louis Ouellet <louis@laswitchtech.com>
-//
-
 const NoteForm = function(form,values = {},modal = null){
 
     // Initialize Values
@@ -26,20 +19,6 @@ const NoteForm = function(form,values = {},modal = null){
             }
         }
     }
-
-    // csrf
-    form.add(
-        {
-            name: CSRF_KEY,
-            label: 'csrf',
-            icon: 'hash',
-            type: 'hidden',
-            value: CSRF_TOKEN,
-        },
-        function(input,form){
-            input.css('display','none');
-        },
-    );
 
     // subject
     form.add(
@@ -248,7 +227,7 @@ const NoteFormat = function(element, note){
 };
 const NoteModal = function(id, title){
     $.ajax({
-        url: '/endpoint.php/notes/details?id='+id,
+        url: '/api/notes/fetch?id='+id,
         type: 'GET',dataType: 'json',
         success: function(response) {
             builder.Component(
@@ -340,14 +319,11 @@ const NoteModalEdit = function(note){
                         },
                         submit: function(form){
                             $.ajax({
-                                url: '/endpoint.php/notes/update?id='+note.id,
+                                url: '/api/notes/update?id='+note.id,
+                                headers: {'X-CSRF-Authorization': CSRF_KEY},
                                 type: 'POST',dataType: 'json',
                                 data: form.val(),
                                 success: function(response) {
-
-                                    // Update the CSRF
-                                    CSRF_KEY = response.CSRF.key;
-                                    CSRF_TOKEN = response.CSRF.token;
 
                                     // Update the note from the list
                                     $('[data-type="note"][data-id="'+note.id+'"]').each(function(){
@@ -422,17 +398,14 @@ const NoteModalCreate = function(list = null, fields = {}, callback = null){
                         },
                         submit: function(form){
                             $.ajax({
-                                url: '/endpoint.php/notes/create',
+                                url: '/api/notes/create',
+                                headers: {'X-CSRF-Authorization': CSRF_KEY},
                                 type: 'POST',dataType: 'json',
                                 data: form.val(),
                                 success: function(response) {
 
                                     // Set the record
                                     const note = response.record;
-
-                                    // Update the CSRF
-                                    CSRF_KEY = response.CSRF.key;
-                                    CSRF_TOKEN = response.CSRF.token;
 
                                     // Check if the list is defined
                                     if(list){
@@ -476,10 +449,10 @@ const NoteModalCreate = function(list = null, fields = {}, callback = null){
 };
 const NoteModalShare = function(note){
     $.ajax({
-        url: '/endpoint.php/auth/associates',
+        url: '/api/auth/users',
         type: 'GET',dataType: 'json',
         success: function(response) {
-            var members = response;
+            var members = response.records;
             var options = [];
             for(const [id, member] of Object.entries(members)){
                 options.push({id: id, text: member.username});
@@ -513,15 +486,20 @@ const NoteModalShare = function(note){
                         component.body,
                         {
                             callback:{
+                                val: function(values){
+                                    let users = [];
+                                    for(const [key, value] of Object.entries(values.sharedWith)){
+                                        users.push(parseInt(value));
+                                    }
+                                    return users;
+                                },
                                 submit: function(form){
-                                    console.log(form.val())
                                     $.ajax({
-                                        url: '/endpoint.php/notes/share?id='+note.id,
+                                        url: '/api/notes/update?id='+note.id,
+                                        headers: {'X-CSRF-Authorization': CSRF_KEY},
                                         type: 'POST',dataType: 'json',
-                                        data: form.val(),
+                                        data: {sharedWith: form.val()},
                                         success: function(response) {
-                                            CSRF_KEY = response.CSRF.key;
-                                            CSRF_TOKEN = response.CSRF.token;
                                             if(typeof callback === "function"){
                                                 callback(response);
                                             }
@@ -532,18 +510,6 @@ const NoteModalShare = function(note){
                             },
                         },
                         function(form,component){
-                            form.add(
-                                {
-                                    name: CSRF_KEY,
-                                    label: 'csrf',
-                                    icon: 'hash',
-                                    type: 'hidden',
-                                    value: CSRF_TOKEN,
-                                },
-                                function(input,form){
-                                    input.css('display','none');
-                                },
-                            );
                             form.add(
                                 {
                                     name: 'sharedWith',
@@ -562,63 +528,6 @@ const NoteModalShare = function(note){
             );
         }
     });
-    // builder.Component(
-    //     "modal",
-    //     null,
-    //     {
-    //         onEnter: false,
-    //         destroy: true,
-    //         icon: "share",
-    //         title: builder.Locale.get("Share Note"),
-    //         cancel: false,
-    //         submit: true,
-    //         callback: {
-    //             submit: function(element,modal){
-    //                 element.form.submit();
-    //             },
-    //         },
-    //     },
-    //     function(modal,component){
-    //         const componentModal = component;
-    //         component.header.addClass('text-bg-light');
-    //         component.header.tools.find('button').addClass('text-bg-light');
-    //         component.footer.submit.addClass('btn-light').removeClass('btn-link').attr({
-    //             "style": "border-bottom-right-radius: var(--bs-modal-inner-border-radius) !important;border-bottom-left-radius: var(--bs-modal-inner-border-radius) !important;",
-    //         }).text(builder.Locale.get('Share'));
-    //         component.footer.submit.icon = $(document.createElement('i')).addClass('bi bi-share me-1').prependTo(component.footer.submit);
-    //         component.form = builder.Component(
-    //             'form',
-    //             component.body,
-    //             {
-    //                 class:{
-    //                     form: 'row row-cols-3',
-    //                     field: 'mb-3 col',
-    //                 },
-    //                 callback:{
-    //                     val: function(values){
-    //                         values.isPublic = (values.isPublic === false ? 1 : 0);
-    //                         return values;
-    //                     },
-    //                     submit: function(form){
-    //                         // $.ajax({
-    //                         //     url: '/endpoint.php/notes/update?id='+note.id,
-    //                         //     type: 'POST',dataType: 'json',
-    //                         //     data: form.val(),
-    //                         //     success: function(response) {
-    //                         //         CSRF_KEY = response.CSRF.key;
-    //                         //         CSRF_TOKEN = response.CSRF.token;
-    //                         //         modal.hide();
-    //                         //     }
-    //                         // });
-    //                     },
-    //                 },
-    //             },
-    //             function(form,component){
-    //                 modal.show();
-    //             },
-    //         );
-    //     },
-    // );
 };
 const NoteModalDelete = function(note){
     builder.Component(
@@ -635,7 +544,7 @@ const NoteModalDelete = function(note){
             callback: {
                 submit: function(element,modal){
                     $.ajax({
-                        url: '/endpoint.php/notes/delete?id='+note.id,
+                        url: '/api/notes/delete?id='+note.id,
                         type: 'GET',dataType: 'json',
                         success: function(response) {
                             // Remove the note from the list
@@ -684,7 +593,7 @@ const NoteModalArchive = function(note){
             callback: {
                 submit: function(element,modal){
                     $.ajax({
-                        url: '/endpoint.php/notes/archive?id='+note.id,
+                        url: '/api/notes/archive?id='+note.id,
                         type: 'GET',dataType: 'json',
                         success: function(response) {
 
@@ -757,21 +666,16 @@ const NotesFeed = function(notes, container, $table = null, $id = null, callback
             // Loop through the notes
             // for(const [key, id] of Object.entries(sortedKeys)){
             for(const [id, note] of Object.entries(notes)){
-                // const note = notes[id];
 
-                // Check if note is Public, if not, check if user is owner or shared with
-                if(note.isPublic || note.owner.id === USER_ID || (note.sharedWith.length > 0 && note.sharedWith.includes(USER_ID))){
+                // Add the note to the list
+                list.add(
+                    {},
+                    function(item,list){
 
-                    // Add the note to the list
-                    list.add(
-                        {},
-                        function(item,list){
-
-                            // Format the note
-                            NoteFormat(item, note);
-                        },
-                    );
-                }
+                        // Format the note
+                        NoteFormat(item, note);
+                    },
+                );
             }
         },
     );

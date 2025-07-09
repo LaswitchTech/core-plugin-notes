@@ -1,539 +1,294 @@
 <?php
 
-/**
- * Core Framework - NotesEndpoint
- *
- * @license    MIT (https://mit-license.org/)
- * @author     Louis Ouellet <louis@laswitchtech.com>
- */
-
 // Import additionnal class into the global namespace
-use \LaswitchTech\Core\Abstracts\Endpoint;
+use \LaswitchTech\Core\Base\BaseEndpoint;
 
-class NotesEndpoint extends Endpoint {
+class NotesEndpoint extends BaseEndpoint {
 
     /**
      * Constructor
      */
     public function __construct()
     {
-
-        // Call Parent Constructor
+        // Call the parent constructor
         parent::__construct();
 
-        // Retrieve the namespace
-        $namespace = $this->Request->getNamespace();
-
-        // Set Global access
-        $this->Public = false;
+        // Initialize the Endpoint
+        $this->init('notes');
 
         // Set Properties
-        switch($namespace){
-            case "/notes/details":
-                $this->Level = 1;
-                break;
-            case "/notes/create":
-                $this->Level = 2;
-                break;
-            case "/notes/update":
-            case "/notes/share":
-                $this->Level = 3;
-                break;
-            case "/notes/delete":
-            case "/notes/archive":
-            case "/notes/recover":
-                $this->Level = 4;
-                break;
-        }
+        $this->required = ['subject','content','targetTable','targetId'];
     }
 
     /**
-     * Retrieve Note's Details
+     * Retrieve a record
      */
-    public function detailsAction(): array
+    public function fetchAction(): array
     {
-        $message = ["status" => 200, "message" => "OK", "data" => []];
-        $note = $this->Model->Notes->get(intval($this->Request->getParams('GET','id')));
-        if(empty($note)){
-            $message = ["status" => 404, "message" => "Not Found", "data" => "Could not find the requested note."];
-        } else {
-            if($note['organization']['id'] != $this->Auth->user()->organization()->id){
-                $message = ["status" => 403, "message" => "Forbidden", "data" => "You are not allowed to access this note."];
-            }
-            if(!$note['isPublic'] && $note['owner']['id'] != $this->Auth->user()->id){
-                if(!in_array($this->Auth->user()->id,$note['sharedWith'])){
-                    $message = ["status" => 403, "message" => "Forbidden", "data" => "You are not allowed to access this note."];
-                } else {
-                    $roles = $this->Auth->user()->roles();
-                    if(!in_array('Administrator',$roles) && !in_array('Marketing Manager',$roles)){
-                        $message = ["status" => 403, "message" => "Forbidden", "data" => "You are not allowed to access this note."];
-                    }
+        // Call the parent constructor
+        $message = parent::fetchAction();
+
+        // Check if the records is accessible
+        if($message['status'] == 200){
+
+            // Check if the Relationship Plugin is accessible
+            if($this->Helper->Core->isInstalled('relationship')){
+                $message['data']['dependencies']['relationship'] = $this->Model->Relationship->get($this->basename, $message['data']['record']['id']);
+                if($this->Helper->Core->isInstalled('vcards') && array_key_exists('vcard', $message['data']['record'])){
+                    $message['data']['dependencies']['relationship'] = array_merge(
+                        $message['data']['dependencies']['relationship'],
+                        $this->Model->Relationship->get('vcards', $message['data']['record']['vcard']['id'])
+                    );
                 }
             }
+
+            // Check if the Events is accessible
+            if($this->Helper->Core->isInstalled('event')){
+                $message['data']['dependencies']['event'] = $this->Model->Event->fetchAll([
+                    ["key" => "targetTable", "operator" => "=", "value" => $this->basename],
+                    ["key" => "targetId", "operator" => "=", "value" => $message['data']['record']['id']],
+                    ["key" => "isArchived", "operator" => "<>", "value" => 1],
+                ]);
+            }
         }
-        if($message['status'] == 200){
-            $message['data'] = [
-                "record" => $note,
-                "relationships" => $this->Model->Relationship->get('notes', $note['id']),
-            ];
-        }
+
+        // Return the message
         return $message;
     }
 
     /**
-     * Update a Note
-     */
-    public function updateAction(): array
-    {
-        // Import Global Variables
-        global $CSRF;
-
-        // Set the default message
-        $message = ["status" => 200, "message" => "OK", "data" => []];
-
-        // Check the request method
-        if($this->Request->getMethod() == "POST"){
-            $message["data"]["CSRF"] = [
-                "token" => $CSRF->token(),
-                "key" => $CSRF->key()
-            ];
-        }
-
-        // Retrieve the Note id
-        $id = intval($this->Request->getParams('REQUEST','id'));
-
-        // Retrieve the Note
-        $Note = $this->Model->Notes->get($id);
-
-        // Check if the Note exists
-        if(empty($Note)){
-            $message = ["status" => 404, "message" => "Not Found", "data" => "Could not find the requested Note."];
-        } else {
-            if($Note['organization']['id'] != $this->Auth->user()->organization()->id){
-                $message = ["status" => 403, "message" => "Forbidden", "data" => "You are not allowed to access this note."];
-            }
-            if($Note['owner']['id'] != $this->Auth->user()->id){
-                if(!in_array($this->Auth->user()->id,$Note['sharedWith'])){
-                    $message = ["status" => 403, "message" => "Forbidden", "data" => "You are not allowed to access this note."];
-                } else {
-                    $roles = $this->Auth->user()->roles();
-                    if(!in_array('Administrator',$roles) && !in_array('Marketing Manager',$roles)){
-                        $message = ["status" => 403, "message" => "Forbidden", "data" => "You are not allowed to access this note."];
-                    }
-                }
-            }
-        }
-
-        // Check if the Note is accessible
-        if($message['status'] == 200){
-
-            // Check the request method
-            if($this->Request->getMethod() == "POST"){
-
-                // Retrieve the parameters
-                $parameters = $this->Request->getParams('REQUEST');
-
-                // Set Required Fields
-                $required = ['subject','content'];
-
-                // Set Optional Fields
-                $optional = ['isPublic','sharedWith'];
-
-                // Set Unique Fields
-                $unique = ['id','created','modified','owner','organization','targetTable','targetId'];
-
-                // Check if all required fields are set
-                if(count(array_intersect_key(array_flip($required), $parameters)) == count($required)){
-
-                    // Initialize the Events
-                    $message['data']['events'] = [];
-
-                    // Initialize the Note
-                    $data = [];
-
-                    // Update the Note
-                    foreach($required as $key){
-                        if(isset($parameters[$key])){
-                            $data[$key] = $parameters[$key];
-                        }
-                    }
-                    foreach($optional as $key){
-                        if(isset($parameters[$key])){
-                            $data[$key] = $parameters[$key];
-                        }
-                    }
-                    foreach($unique as $key){
-                        if(isset($data[$key])){
-                            unset($data[$key]);
-                        }
-                    }
-
-                    // Intval the isPublic field
-                    if(isset($data['isPublic'])){
-                        $data['isPublic'] = intval($data['isPublic']);
-                    }
-
-                    // Update the Note
-                    $affectedRows = $this->Model->Notes->update($id, $data);
-
-                    // Check if a target object has been assigned on the task
-                    if($affectedRows){
-
-                        // Retrieve the user's username and vCard
-                        $owner = $this->Auth->user()->username;
-                        $vCard = $this->Auth->user()->vcard();
-
-                        // Create the an event
-                        $message['data']['events'][] = $this->Model->Event->create($owner, $Note['targetTable'], $Note['targetId'], 'Note', '<vcard>'.$vCard['id'].':'.$this->Auth->user()->username.'</vcard> has updated <note>'.($data['subject'] ?? $Note['subject']).'</note>.');
-                    }
-
-                    // Retrieve the final lead
-                    $message['data']['record'] = $this->Model->Notes->get($id);
-                } else {
-                    $message['status'] = 400;
-                    $message['message'] = "Bad Request";
-                    $message['data']['error'] = "Some required fields are missing.";
-                }
-            } else {
-                $message = ["status" => 405, "message" => "Method Not Allowed", "data" => "The method is not allowed for the requested URL."];
-            }
-        }
-
-        return $message;
-    }
-
-    /**
-     * Create a Note
+     * Create a record
      */
     public function createAction(): array
     {
-        // Import Global Variables
-        global $CSRF;
+        // Call the parent constructor
+        $message = parent::createAction();
 
-        // Set the default message
-        $message = ["status" => 200, "message" => "OK", "data" => []];
-
-        // Check the request method
-        if($this->Request->getMethod() == "POST"){
-            $message["data"]["CSRF"] = [
-                "token" => $CSRF->token(),
-                "key" => $CSRF->key()
-            ];
-        }
-
-        // Check if the Note is accessible
+        // Check if the record is accessible
         if($message['status'] == 200){
 
-            // Check the request method
-            if($this->Request->getMethod() == "POST"){
+            // Retrieve the parameters
+            $parameters = $message['data']['parameters'];
 
-                // Retrieve the parameters
-                $parameters = $this->Request->getParams('REQUEST');
+            // Initialize the fields array
+            $fields = [];
 
-                // Set Required Fields
-                $required = ['subject','content','targetTable','targetId'];
+            // Check if the Event Plugin is accessible
+            if($this->Helper->Core->isInstalled('event')){
 
-                // Set Optional Fields
-                $optional = ['isPublic','sharedWith'];
+                // Initialize the Events
+                $message['data']['event'] = [];
 
-                // Set Unique Fields
-                $unique = ['id','created','modified','owner','organization'];
+                // Setup a new event
+                $event = [
+                    'category' => 'Note',
+                    'message' => 'New Note Created by <vcard>'.$this->Auth->user()->vcard['id'].':'.$this->Auth->user()->username.'</vcard>',
+                    'icon' => 'circle',
+                    'color' => 'secondary',
+                    'link' => '/plugin/notes/details?id='.$message['data']['record']['id'],
+                    'targetTable' => 'notes',
+                    'targetId' => $message['data']['record']['id'],
+                ];
 
-                // Check if all required fields are set
-                if(count(array_intersect_key(array_flip($required), $parameters)) == count($required)){
+                // Create the event
+                $message['data']['event'][] = $this->Model->Event->create($event);
 
-                    // Initialize the Events
-                    $message['data']['events'] = [];
+                // Setup a new event for the target
+                $event['link'] = '/plugin/'.$message['data']['record']['targetTable'].'/details?id='.$message['data']['record']['targetId'];
+                $event['targetTable'] = $message['data']['record']['targetTable'];
+                $event['targetId'] = $message['data']['record']['targetId'];
 
-                    // Retrieve the user's username and vCard
-                    $owner = $this->Auth->user()->username;
-                    $organization = $this->Auth->user()->organization()->id;
-                    $vCard = $this->Auth->user()->vcard();
+                // Create the event
+                $message['data']['event'][] = $this->Model->Event->create($event);
+            }
 
-                    // Initialize the Note
-                    $data = [];
-
-                    // Update the Note
-                    foreach($required as $key){
-                        if(isset($parameters[$key])){
-                            $data[$key] = $parameters[$key];
-                        }
-                    }
-                    foreach($optional as $key){
-                        if(isset($parameters[$key])){
-                            $data[$key] = $parameters[$key];
-                        }
-                    }
-
-                    // Set Unique Values
-                    $data['owner'] = $owner;
-                    $data['organization'] = $organization;
-
-                    // Intval the isPublic field
-                    if(isset($data['isPublic'])){
-                        $data['isPublic'] = intval($data['isPublic']);
-                    }
-
-                    // Update the Note
-                    $id = $this->Model->Notes->create($data);
-
-                    // Check if a target object has been assigned on the task
-                    if($id){
-
-                        // Create the an event
-                        $message['data']['events'][] = $this->Model->Event->create($owner, $data['targetTable'], $data['targetId'], 'Note', '<vcard>'.$vCard['id'].':'.$this->Auth->user()->username.'</vcard> wrote <note>'.$data['subject'].'</note>.');
-                    }
-
-                    // Retrieve the final lead
-                    $message['data']['record'] = $this->Model->Notes->get($id);
-                } else {
-                    $message['status'] = 400;
-                    $message['message'] = "Bad Request";
-                    $message['data']['error'] = "Some required fields are missing.";
-                }
-            } else {
-                $message = ["status" => 405, "message" => "Method Not Allowed", "data" => "The method is not allowed for the requested URL."];
+            // Check if $fields is empty
+            if(!empty($fields)){
+                $affectedRows = $this->Model->Notes->update($message['data']['record']['id'], $fields);
             }
         }
 
+        // Return the message
         return $message;
     }
 
     /**
-     * Delete a Note
+     * Update a record
+     */
+    public function updateAction(): array
+    {
+        // Call the parent constructor
+        $message = parent::updateAction();
+
+        // Check if the record is accessible
+        if($message['status'] == 200){
+
+            // Check if the Event Plugin is accessible
+            if($this->Helper->Core->isInstalled('event')){
+
+                // Initialize the Events
+                $message['data']['event'] = [];
+
+                // Setup a new event
+                $event = [
+                    'category' => 'Note',
+                    'message' => 'Note Updated by <vcard>'.$this->Auth->user()->vcard['id'].':'.$this->Auth->user()->username.'</vcard>',
+                    'icon' => 'circle',
+                    'color' => 'secondary',
+                    'link' => '/plugin/notes/details?id='.$message['data']['record']['id'],
+                    'targetTable' => 'notes',
+                    'targetId' => $message['data']['record']['id'],
+                ];
+
+                // Create the event
+                $message['data']['event'][] = $this->Model->Event->create($event);
+
+                // Setup a new event for the target
+                $event['link'] = '/plugin/'.$message['data']['record']['targetTable'].'/details?id='.$message['data']['record']['targetId'];
+                $event['targetTable'] = $message['data']['record']['targetTable'];
+                $event['targetId'] = $message['data']['record']['targetId'];
+
+                // Create the event
+                $message['data']['event'][] = $this->Model->Event->create($event);
+            }
+        }
+
+        // Return the message
+        return $message;
+    }
+
+    /**
+     * Delete a record
      */
     public function deleteAction(): array
     {
-        // Import Global Variables
-        global $CSRF;
+        // Call the parent constructor
+        $message = parent::deleteAction();
 
-        // Set the default message
-        $message = ["status" => 200, "message" => "OK", "data" => []];
-
-        // Check the request method
-        if($this->Request->getMethod() == "POST"){
-            $message["data"]["CSRF"] = [
-                "token" => $CSRF->token(),
-                "key" => $CSRF->key()
-            ];
-        }
-
-        // Retrieve the Note id
-        $id = intval($this->Request->getParams('REQUEST','id'));
-
-        // Retrieve the Note
-        $Note = $this->Model->Notes->get($id);
-
-        // Check if the Note exists
-        if(empty($Note)){
-            $message = ["status" => 404, "message" => "Not Found", "data" => "Could not find the requested Note."];
-        } else {
-            if($Note['organization']['id'] != $this->Auth->user()->organization()->id){
-                $message = ["status" => 403, "message" => "Forbidden", "data" => "You are not allowed to access this note."];
-            }
-            if($Note['owner']['id'] != $this->Auth->user()->id){
-                if(!in_array($this->Auth->user()->id,$Note['sharedWith'])){
-                    $message = ["status" => 403, "message" => "Forbidden", "data" => "You are not allowed to access this note."];
-                } else {
-                    $roles = $this->Auth->user()->roles();
-                    if(!in_array('Administrator',$roles) && !in_array('Marketing Manager',$roles)){
-                        $message = ["status" => 403, "message" => "Forbidden", "data" => "You are not allowed to access this note."];
-                    }
-                }
-            }
-        }
-
-        // Check if the Note is accessible
+        // Check if the record is accessible
         if($message['status'] == 200){
 
-            // Initialize the Events
-            $message['data']['events'] = [];
+            // Check if the Event Plugin is accessible
+            if($this->Helper->Core->isInstalled('event')){
 
-            // Delete the Note
-            $affectedRows = $this->Model->Notes->delete($id);
+                // Initialize the Events
+                $message['data']['event'] = [];
 
-            // Check if a target object has been assigned on the task
-            if($affectedRows){
+                // Setup a new event
+                $event = [
+                    'category' => 'Note',
+                    'message' => 'Note Deleted by <vcard>'.$this->Auth->user()->vcard['id'].':'.$this->Auth->user()->username.'</vcard>',
+                    'icon' => 'circle',
+                    'color' => 'secondary',
+                    'link' => '/plugin/notes/details?id='.$message['data']['record']['id'].'&name='.urlencode($message['data']['record']['vcard']['name']),
+                    'targetTable' => 'notes',
+                    'targetId' => $message['data']['record']['id'],
+                ];
 
-                // Retrieve the user's username and vCard
-                $owner = $this->Auth->user()->username;
-                $vCard = $this->Auth->user()->vcard();
+                // Create the event
+                $message['data']['event'][] = $this->Model->Event->create($event);
 
-                // Create the an event
-                $message['data']['events'][] = $this->Model->Event->create($owner, $Note['targetTable'], $Note['targetId'], 'Note', '<vcard>'.$vCard['id'].':'.$this->Auth->user()->username.'</vcard> has deleted <note>'.$Note['subject'].'</note>.');
+                // Setup a new event for the target
+                $event['link'] = '/plugin/'.$message['data']['record']['targetTable'].'/details?id='.$message['data']['record']['targetId'];
+                $event['targetTable'] = $message['data']['record']['targetTable'];
+                $event['targetId'] = $message['data']['record']['targetId'];
+
+                // Create the event
+                $message['data']['event'][] = $this->Model->Event->create($event);
             }
-
-            // Retrieve the final lead
-            $message['data']['affectedRows'] = $affectedRows;
         }
 
+        // Return the message
         return $message;
     }
 
     /**
-     * Archive a Note
+     * Archive a record
      */
     public function archiveAction(): array
     {
-        // Set the default message
-        $message = ["status" => 200, "message" => "OK", "data" => []];
+        // Call the parent constructor
+        $message = parent::archiveAction();
 
-        // Retrieve the Note
-        $note = $this->Model->Notes->get(intval($this->Request->getParams('GET','id')));
-
-        // Check if the Note is accessible
-        if(empty($note)){
-            $message = ["status" => 404, "message" => "Not Found", "data" => "Could not find the requested note."];
-        } else {
-            if($note['organization']['id'] != $this->Auth->user()->organization()->id){
-                $message = ["status" => 403, "message" => "Forbidden", "data" => "You are not allowed to access this note."];
-            }
-        }
-
-        // Check if the Note is accessible
+        // Check if the record is accessible
         if($message['status'] == 200){
 
-            // Check the request method
-            if($this->Request->getMethod() == "GET"){
+            // Check if the Event Plugin is accessible
+            if($this->Helper->Core->isInstalled('event')){
 
-                // Update the Note
-                $affectedRows = $this->Model->Notes->update($note['id'], ["isArchived" => 1]);
+                // Initialize the Events
+                $message['data']['event'] = [];
 
-                // Retrieve the Updated Note
-                $message["data"]["record"] = $this->Model->Notes->get($note['id']);
-            } else {
-                $message = ["status" => 400, "message" => "Bad Request", "data" => "Invalid Request Method"];
+                // Setup a new event
+                $event = [
+                    'category' => 'Note',
+                    'message' => 'Note Archived by <vcard>'.$this->Auth->user()->vcard['id'].':'.$this->Auth->user()->username.'</vcard>',
+                    'icon' => 'circle',
+                    'color' => 'secondary',
+                    'link' => '/plugin/notes/details?id='.$message['data']['record']['id'],
+                    'targetTable' => 'notes',
+                    'targetId' => $message['data']['record']['id'],
+                ];
+
+                // Create the event
+                $message['data']['event'][] = $this->Model->Event->create($event);
+
+                // Setup a new event for the target
+                $event['link'] = '/plugin/'.$message['data']['record']['targetTable'].'/details?id='.$message['data']['record']['targetId'];
+                $event['targetTable'] = $message['data']['record']['targetTable'];
+                $event['targetId'] = $message['data']['record']['targetId'];
+
+                // Create the event
+                $message['data']['event'][] = $this->Model->Event->create($event);
             }
         }
 
+        // Return the message
         return $message;
     }
 
     /**
-     * Recover a Note
+     * Recover a record
      */
     public function recoverAction(): array
     {
-        // Set the default message
-        $message = ["status" => 200, "message" => "OK", "data" => []];
+        // Call the parent constructor
+        $message = parent::recoverAction();
 
-        // Retrieve the Note
-        $note = $this->Model->Notes->get(intval($this->Request->getParams('GET','id')));
-
-        // Check if the Note is accessible
-        if(empty($note)){
-            $message = ["status" => 404, "message" => "Not Found", "data" => "Could not find the requested note."];
-        } else {
-            if($note['organization']['id'] != $this->Auth->user()->organization()->id){
-                $message = ["status" => 403, "message" => "Forbidden", "data" => "You are not allowed to access this note."];
-            }
-        }
-
-        // Check if the Note is accessible
+        // Check if the record is accessible
         if($message['status'] == 200){
 
-            // Check the request method
-            if($this->Request->getMethod() == "GET"){
-
-                // Update the Note
-                $affectedRows = $this->Model->Notes->update($note['id'], ["isArchived" => 0]);
-
-                // Retrieve the Updated Note
-                $message["data"]["record"] = $this->Model->Notes->get($note['id']);
-            } else {
-                $message = ["status" => 400, "message" => "Bad Request", "data" => "Invalid Request Method"];
-            }
-        }
-
-        return $message;
-    }
-
-    /**
-     * Share a Note
-     */
-    public function shareAction(): array
-    {
-        // Import Global Variables
-        global $CSRF;
-
-        // Set the default message
-        $message = ["status" => 200, "message" => "OK", "data" => []];
-
-        // Check the request method
-        if($this->Request->getMethod() == "POST"){
-            $message["data"]["CSRF"] = [
-                "token" => $CSRF->token(),
-                "key" => $CSRF->key()
-            ];
-        }
-
-        // Retrieve the Note id
-        $id = intval($this->Request->getParams('REQUEST','id'));
-
-        // Retrieve the Note
-        $Note = $this->Model->Notes->get($id);
-
-        // Check if the Note exists
-        if(empty($Note)){
-            $message = ["status" => 404, "message" => "Not Found", "data" => "Could not find the requested Note."];
-        } else {
-            if($Note['organization']['id'] != $this->Auth->user()->organization()->id){
-                $message = ["status" => 403, "message" => "Forbidden", "data" => "You are not allowed to access this note."];
-            }
-            if($Note['owner']['id'] != $this->Auth->user()->id){
-                if(!in_array($this->Auth->user()->id,$Note['sharedWith'])){
-                    $message = ["status" => 403, "message" => "Forbidden", "data" => "You are not allowed to access this note."];
-                } else {
-                    $roles = $this->Auth->user()->roles();
-                    if(!in_array('Administrator',$roles) && !in_array('Marketing Manager',$roles)){
-                        $message = ["status" => 403, "message" => "Forbidden", "data" => "You are not allowed to access this note."];
-                    }
-                }
-            }
-        }
-
-        // Check if the Note is accessible
-        if($message['status'] == 200){
-
-            // Check the request method
-            if($this->Request->getMethod() == "POST"){
+            // Check if the Event Plugin is accessible
+            if($this->Helper->Core->isInstalled('event')){
 
                 // Initialize the Events
-                $message['data']['events'] = [];
+                $message['data']['event'] = [];
 
-                // Retrieve the parameters
-                $sharedWith = $this->Request->getParams('REQUEST','sharedWith') ?? [];
+                // Setup a new event
+                $event = [
+                    'category' => 'Note',
+                    'message' => 'Note Recovered for <vcard>'.$message['data']['record']['vcard']['id'].':'.$message['data']['record']['vcard']['name'].'</vcard> by <vcard>'.$this->Auth->user()->vcard['id'].':'.$this->Auth->user()->username.'</vcard>',
+                    'icon' => 'circle',
+                    'color' => 'secondary',
+                    'link' => '/plugin/notes/details?id='.$message['data']['record']['id'],
+                    'targetTable' => 'notes',
+                    'targetId' => $message['data']['record']['id'],
+                ];
 
-                // Sanitize the sharedWith field
-                foreach($sharedWith as $key => $value){
-                    $sharedWith[$key] = intval($value);
-                }
+                // Create the event
+                $message['data']['event'][] = $this->Model->Event->create($event);
 
-                // Update the Note
-                $affectedRows = $this->Model->Notes->update($id, ['sharedWith' => $sharedWith]);
+                // Setup a new event for the target
+                $event['link'] = '/plugin/'.$message['data']['record']['targetTable'].'/details?id='.$message['data']['record']['targetId'];
+                $event['targetTable'] = $message['data']['record']['targetTable'];
+                $event['targetId'] = $message['data']['record']['targetId'];
 
-                // Check if a target object has been assigned on the task
-                if($affectedRows){
-
-                    // Retrieve the user's username and vCard
-                    $owner = $this->Auth->user()->username;
-                    $vCard = $this->Auth->user()->vcard();
-
-                    // Create the an event
-                    if(!empty($sharedWith)){
-                        $message['data']['events'][] = $this->Model->Event->create($owner, $Note['targetTable'], $Note['targetId'], 'Note', '<vcard>'.$vCard['id'].':'.$this->Auth->user()->username.'</vcard> has shared <note>'.$Note['subject'].'</note>.');
-                    } else {
-                        $message['data']['events'][] = $this->Model->Event->create($owner, $Note['targetTable'], $Note['targetId'], 'Note', '<vcard>'.$vCard['id'].':'.$this->Auth->user()->username.'</vcard> has unshared <note>'.$Note['subject'].'</note>.');
-                    }
-                }
-
-                // Retrieve the final lead
-                $message['data']['record'] = $this->Model->Notes->get($id);
-            } else {
-                $message = ["status" => 405, "message" => "Method Not Allowed", "data" => "The method is not allowed for the requested URL."];
+                // Create the event
+                $message['data']['event'][] = $this->Model->Event->create($event);
             }
         }
 
+        // Return the message
         return $message;
     }
 }
