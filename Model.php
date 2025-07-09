@@ -1,118 +1,132 @@
 <?php
 
-/**
- * Core Framework - NotesModel
- *
- * @license    MIT (https://mit-license.org/)
- * @author     Louis Ouellet <louis@laswitchtech.com>
- */
-
 // Import additionnal class into the global namespace
-use \LaswitchTech\Core\Abstracts\Model;
+use \LaswitchTech\Core\Base\BaseModel;
 
-class NotesModel extends Model {
+class NotesModel extends BaseModel {
 
     /**
-     * Retrieve Notes's Details
+     * Constructor
+     */
+    public function __construct()
+    {
+        // Call the parent constructor
+        parent::__construct();
+
+        // Initialize the Model
+        $this->init('notes');
+    }
+
+    /**
+     * Retrieve multiple records
+     *
+     * @param array $conditions
+     * @return array
+     */
+    public function fetchAll(array $conditions = [], string $conjunction = 'AND'): array
+    {
+        // Create the Query
+        $Query = $this->Database->query()
+            ->table($this->table)
+            ->select('*')
+            ->join('owner', 'users', 'username')
+            ->join('organization', 'organizations', 'id')
+            ->filter()
+            ->where('id', 9999, '<>')
+            ->where('organization', $this->Auth->user()->organization()->id);
+
+        // Check if the conditions are empty
+        if(!empty($conditions)){
+
+            // Add a Filter
+            $Query->filter();
+
+            // Add the Conditions
+            foreach($conditions as $key => $condition){
+
+                // Check if the key exists in the definition
+                if(!array_key_exists($condition['key'], $this->definition)){
+
+                    // Remove the key from the data
+                    unset($conditions[$key]);
+                    continue;
+                }
+
+                // Add the condition to the Query
+                $Query->where($condition["key"], $condition["value"], $condition["operator"], $conjunction);
+            }
+        }
+
+        // Retrieve the Results
+        $records = $Query->fetch();
+
+        // Loop through the records to process them
+        foreach($records as $key => $record){
+
+            // Process the record
+            $record = $this->process($record);
+
+            // Check if the note is private
+            if(!filter_var($record['isPublic'], FILTER_VALIDATE_BOOLEAN)){
+
+                // Check if the sharedWith field is an array
+                if(!is_array($record['sharedWith']) || empty($record['sharedWith'])){
+
+                    // If not, set it to an empty array
+                    $record['sharedWith'] = [];
+                }
+
+                // Convert all IDs in sharedWith to integers
+                $record['sharedWith'] = array_map('intval', $record['sharedWith']);
+
+                // Check if the user is the owner or has access to the note
+                if($record['owner']['id'] !== $this->Auth->user()->id && !in_array($this->Auth->user()->id,$record['sharedWith'])){
+
+                    // Remove the private note from the results
+                    unset($records[$key]);
+                    continue;
+                }
+            }
+
+            // Overwrite the record with the processed one
+            $records[$key] = $record;
+        }
+
+        // Return the Results
+        return $records;
+    }
+
+    /**
+     * Retrieve a single record
      *
      * @param int $id
      * @return array
      */
-    public function get(int $id): array
+    public function fetch(int $id): array
     {
         // Create the Query
         $Query = $this->Database->query()
-            ->table('notes')
+            ->table($this->table)
             ->select('*')
             ->join('owner', 'users', 'username')
             ->join('organization', 'organizations', 'id')
             ->filter()
             ->where('id', 9999, '<>')
             ->filter()
-            ->where('id', $id)
+            ->where($this->primary, $id)
             ->limit(1);
 
-        // Retrieve the Results
-        $result = $Query->result();
+        // Retrieve the record
+        $records = $Query->fetch();
 
-        // Decode JSON Fields
-        foreach($result as $key => $record){
+        // Loop through the records to process them
+        foreach($records as $key => $record){
 
-            // Decode the sharedWith Field
-            $result[$key]['sharedWith'] = json_decode($record['sharedWith'] ?? '[]', true);
-
-            // Retrieve the Target
-            if(!empty($record['targetTable']) && !empty($record['targetId'])){
-                $Query = $this->Database->query()
-                    ->table($record['targetTable'])
-                    ->select('*')
-                    ->where('id', $record['targetId'])
-                    ->limit(1);
-                $target = $Query->result();
-                $result[$key]['target'] = $target[0] ?? [];
-            } else {
-                $result[$key]['target'] = [];
-            }
+            // Overwrite the record with the processed one
+            $records[$key] = $this->process($record);
         }
 
-        // Return the Results
-        return $result[array_key_first($result)] ?? [];
-    }
-
-    /**
-     * Create a new Note and return the id
-     *
-     * @param array $data
-     * @return int
-     */
-    public function create(array $data): int
-    {
-        // Create the Query
-        $Query = $this->Database->query()
-            ->table('notes')
-            ->insert($data);
-
-        // Execute the Query
-        $affectedRows = $Query->execute();
-
-        // Execute the Query
-        return $Query->lastId();
-    }
-
-    /**
-     * Update a Note
-     *
-     * @param int $id
-     * @param array $data
-     * @return int
-     */
-    public function update(int $id, array $data): int
-    {
-        // Create the Query
-        $Query = $this->Database->query()
-            ->table('notes')
-            ->update($data)
-            ->where('id', $id);
-
-        // Execute the Query
-        return $Query->execute();
-    }
-
-    /**
-     * Delete a Note
-     *
-     * @param int $id
-     * @return int
-     */
-    public function delete(int $id): int
-    {
-        // Create the Query
-        $Query = $this->Database->query()
-            ->table('notes')
-            ->delete()
-            ->where('id', $id);
-
-        // Execute the Query
-        return $Query->execute();
+        // Return the record or an empty array if not found
+        return $records[array_key_first($records)] ?? [];
     }
 }
