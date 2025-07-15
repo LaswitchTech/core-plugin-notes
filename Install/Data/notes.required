@@ -1,0 +1,16 @@
+[
+    {
+        "id": 9999,
+        "created": "2025-04-07 15:10:38",
+        "modified": "2025-04-07 15:10:38",
+        "owner": "demo",
+        "subject": null,
+        "content": null,
+        "isPublic": 1,
+        "isArchived": 0,
+        "sharedWith": null,
+        "organization": null,
+        "targetTable": null,
+        "targetId": null
+    }
+]
