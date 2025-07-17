@@ -455,6 +455,9 @@ const NoteModalShare = function(note){
             var members = response.records;
             var options = [];
             for(const [id, member] of Object.entries(members)){
+                if(member.id === USER_ID){
+                    continue;
+                }
                 options.push({id: id, text: member.username});
             }
             builder.Component(
