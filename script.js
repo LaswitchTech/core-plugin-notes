@@ -251,7 +251,7 @@ const NoteModal = function(id, title){
                     })
 
                     // Set styling
-                    component.header.addClass('text-bg-primary');
+                    component.addClass('modal-primary');
                     component.footer.remove();
 
                     // Check if response.record.category is in the list of categories [Lead, Customer, Supplier, Contact]
@@ -299,7 +299,7 @@ const NoteModalEdit = function(note){
         },
         function(modal,component){
             const componentModal = component;
-            component.header.addClass('text-bg-warning');
+            component.addClass('modal-warning');
             component.footer.submit.addClass('btn-success').removeClass('btn-link').attr({
                 "style": "border-bottom-right-radius: var(--bs-modal-inner-border-radius) !important;border-bottom-left-radius: var(--bs-modal-inner-border-radius) !important;",
             });
@@ -373,7 +373,7 @@ const NoteModalCreate = function(list = null, fields = {}, callback = null){
         },
         function(modal,component){
             const componentModal = component;
-            component.header.addClass('text-bg-success');
+            component.addClass('modal-success');
             component.footer.submit.addClass('btn-success').removeClass('btn-link').attr({
                 "style": "border-bottom-right-radius: var(--bs-modal-inner-border-radius) !important;border-bottom-left-radius: var(--bs-modal-inner-border-radius) !important;",
             }).text(builder.Locale.get('Create'));
@@ -478,7 +478,7 @@ const NoteModalShare = function(note){
                 },
                 function(modal,component){
                     const componentModal = component;
-                    component.header.addClass('text-bg-light');
+                    component.addClass('modal-light');
                     component.header.tools.find('button').addClass('text-bg-light');
                     component.footer.submit.addClass('btn-light').removeClass('btn-link').attr({
                         "style": "border-bottom-right-radius: var(--bs-modal-inner-border-radius) !important;border-bottom-left-radius: var(--bs-modal-inner-border-radius) !important;",
@@ -572,7 +572,7 @@ const NoteModalDelete = function(note){
             },
         },
         function(modal,component){
-            component.header.addClass('text-bg-danger');
+            component.addClass('modal-danger');
             component.footer.submit.addClass('btn-danger').removeClass('btn-link').attr({
                 "style": "border-bottom-right-radius: var(--bs-modal-inner-border-radius) !important;border-bottom-left-radius: var(--bs-modal-inner-border-radius) !important;",
             }).text(builder.Locale.get('Delete'));
@@ -622,7 +622,7 @@ const NoteModalArchive = function(note){
             },
         },
         function(modal,component){
-            component.header.addClass('text-bg-dark');
+            component.addClass('modal-dark');
             component.footer.submit.addClass('btn-dark').removeClass('btn-link').attr({
                 "style": "border-bottom-right-radius: var(--bs-modal-inner-border-radius) !important;border-bottom-left-radius: var(--bs-modal-inner-border-radius) !important;",
             }).text(builder.Locale.get('Archive'));
