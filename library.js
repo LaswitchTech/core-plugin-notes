@@ -2,6 +2,7 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
 
     #count = 0;
     _feed = null;
+    #interval = null;
 
     _init(){
         this._properties = {
@@ -12,6 +13,8 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
             targetTable: null,
             targetId: null,
             iframed: false,
+            interval: 10000,
+            autoStart: false,
             callback: {},
         };
     }
@@ -24,9 +27,14 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
         // Create Component
         this._component = $(document.createElement('div')).attr({
             'id': 'notes' + this._id,
-            'class': '',
+            'class': 'notes-feed',
         });
         this._component.id = this._component.attr('id');
+
+        // Set Component Class
+        if(this._properties.class.component){
+            this._component.addClass(this._properties.class.component);
+        }
 
         // Set an Update Callback
         this._properties.callback.update = function(feed, post){
@@ -75,11 +83,86 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
                 });
 
                 // Add Feed Posts
-                for(const [key, record] of Object.entries(self._properties.data)){
+                for(const [key, record] of Object.entries(self._properties.data ?? {})){
                     self.add(record);
+                }
+
+                // Check if autoStart is enabled
+                if(self._properties.autoStart){
+                    // Start
+                    setTimeout(function(){
+                        self.start();
+                    }, self._properties.interval);
                 }
             },
         );
+    }
+
+    load(data = null){
+
+        // Set Self
+        const self = this;
+
+        // Check if data is provided
+        if(data){
+
+            // Add Feed Posts
+            for(const [key, record] of Object.entries(data)){
+                this.add(record);
+            }
+        } else {
+
+            // Retrieve Notes
+            $.ajax({
+                url: '/api/notes/fetchAll',
+                headers: {'X-CSRF-Authorization': CSRF_KEY},
+                type: 'POST',dataType: 'json',
+                data: {
+                    conditions: [
+                        {key: 'targetTable', operator: '=', value: this._properties.targetTable},
+                        {key: 'targetId', operator: '=', value: this._properties.targetId},
+                        {key: 'isArchived', operator: '<>', value: 1},
+                    ]
+                },
+                error: function(xhr, status, error) {
+                    console.error('Error fetching data:', status, error);
+                },
+                success: function(response) {
+
+                    // Add Feed Posts
+                    for(const [key, record] of Object.entries(response.records)){
+                        self.add(record);
+                    }
+                }
+            });
+        }
+    }
+
+    start(){
+
+        // Set Self
+        const self = this;
+
+        // Check if the interval is already set
+        if(this.#interval){
+            console.warn('Interval is already set, stopping the previous one.');
+            clearInterval(this.#interval);
+        }
+
+        // Set the interval to check for changes
+        this.#interval = setInterval(function(){
+            self.load();
+        }, this._properties.interval);
+    }
+
+    stop(){
+        // Check if the interval is set
+        if(this.#interval){
+            clearInterval(this.#interval);
+            this.#interval = null;
+        } else {
+            console.warn('No interval is currently set.');
+        }
     }
 
     feed(feed = null){
@@ -97,9 +180,7 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
         // Add Record
         this.feed().add(record,function(post){
             post.find('.avatar').addClass('cursor-pointer')
-            post.find('.owner').click(function(e){
-                e.preventDefault();
-                e.stopPropagation();
+            post.find('.owner').off().click(function(e){
                 self._builder.Widget('vcard',{data: record.owner.vcard});
             });
             if(record.isPublic){
@@ -283,7 +364,7 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
                                                                 post.data = response.record;
 
                                                                 // Update the post
-                                                                post.header.title.html(response.record.subject);
+                                                                post.header.title.html(self._builder.Parser.parse(response.record.subject));
                                                                 post.content.html(response.record.content);
                                                                 post.controls.share.toggle(post.data.isPublic);
 
