@@ -18,6 +18,26 @@ class NotesModel extends BaseModel {
     }
 
     /**
+     * Process a record
+     *
+     * @param array $record
+     * @return array
+     */
+    protected function process(array $record): array
+    {
+        // Call the parent constructor
+        $record = parent::process($record);
+
+        // Process the JSON fields
+        if(!is_array($record['sharedWith'])){
+            $record['sharedWith'] = json_decode($record['sharedWith'] ?? "[]", true);
+        }
+
+        // Return the processed record
+        return $record;
+    }
+
+    /**
      * Retrieve multiple records
      *
      * @param array $conditions
