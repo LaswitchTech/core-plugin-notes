@@ -183,16 +183,24 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
             post.find('.owner').off().click(function(e){
                 self._builder.Widget('vcard',{data: record.owner.vcard});
             });
-            if(typeof post.controls.share !== 'undefined' && record.isPublic){
-                post.controls.share.hide();
+            if(record.isPublic){
+                if(typeof post.controls.share !== 'undefined'){
+                    post.controls.share.hide();
+                }
             }
             if(USER_ID !== record.owner.id){
-                post.controls.archive.remove();
-                delete post.controls.archive;
-                post.controls.share.remove();
-                delete post.controls.share;
-                post.controls.edit.remove();
-                delete post.controls.edit;
+                if(typeof post.controls.archive !== 'undefined'){
+                    post.controls.archive.remove();
+                    delete post.controls.archive;
+                }
+                if(typeof post.controls.share !== 'undefined'){
+                    post.controls.share.remove();
+                    delete post.controls.share;
+                }
+                if(typeof post.controls.edit !== 'undefined'){
+                    post.controls.edit.remove();
+                    delete post.controls.edit;
+                }
             }
         })
     }
