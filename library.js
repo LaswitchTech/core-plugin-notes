@@ -183,7 +183,7 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
             post.find('.owner').off().click(function(e){
                 self._builder.Widget('vcard',{data: record.owner.vcard});
             });
-            if(record.isPublic){
+            if(typeof post.controls.share !== 'undefined' && record.isPublic){
                 post.controls.share.hide();
             }
             if(USER_ID !== record.owner.id){
