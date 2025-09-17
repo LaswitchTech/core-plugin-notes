@@ -226,54 +226,50 @@ const NoteFormat = function(element, note){
     }, 100);
 };
 const NoteModal = function(id, title){
-    $.ajax({
-        url: '/api/notes/fetch?id='+id,
-        type: 'GET',dataType: 'json',
-        success: function(response) {
-            builder.Component(
-                "modal",
-                null,
-                {
-                    onEnter: false,
-                    destroy: true,
-                    icon: "sticky",
-                    title: title,
-                    cancel: false,
-                    submit: false,
-                    size: "xl",
-                },
-                function(modal,component){
+    API.endpoint('/notes/fetch?id='+id).execute(function(response){
+        builder.Component(
+            "modal",
+            null,
+            {
+                onEnter: false,
+                destroy: true,
+                icon: "sticky",
+                title: title,
+                cancel: false,
+                submit: false,
+                size: "xl",
+            },
+            function(modal,component){
 
-                    // Set attributes
-                    component.attr({
-                        "data-id": id,
-                        "data-type": "note",
-                    })
+                // Set attributes
+                component.attr({
+                    "data-id": id,
+                    "data-type": "note",
+                })
 
-                    // Set styling
-                    component.addClass('modal-primary');
-                    component.footer.remove();
+                // Set styling
+                component.addClass('modal-primary');
+                component.footer.remove();
 
-                    // Check if response.record.category is in the list of categories [Lead, Customer, Supplier, Contact]
-                    if(response.record.owner.id === USER_ID){
-                        $(document.createElement('button'))
-                            .addClass('btn btn-lg btn-link')
-                            .html('<i class="bi bi-pencil"></i>')
-                            .prependTo(component.header.tools)
-                            .click(function(){
-                                modal.hide();
-                                NoteModalEdit(response.record);
-                            });
-                    }
+                // Check if response.record.category is in the list of categories [Lead, Customer, Supplier, Contact]
+                if(response.record.owner.id === USER_ID){
+                    $(document.createElement('button'))
+                        .addClass('btn btn-lg btn-link')
+                        .html('<i class="bi bi-pencil"></i>')
+                        .prependTo(component.header.tools)
+                        .click(function(){
+                            modal.hide();
+                            NoteModalEdit(response.record);
+                        });
+                }
 
-                    // Format the note
-                    NoteFormat(component.body, response.record);
+                // Format the note
+                NoteFormat(component.body, response.record);
 
-                    // Show the modal
-                    modal.show();
-                },
-            );
-        }
+                // Show the modal
+                modal.show();
+            },
+        );
     });
 };
 const NoteModalEdit = function(note){
@@ -318,24 +314,20 @@ const NoteModalEdit = function(note){
                             return values;
                         },
                         submit: function(form){
-                            $.ajax({
-                                url: '/api/notes/update?id='+note.id,
-                                headers: {'X-CSRF-Authorization': CSRF_KEY},
-                                type: 'POST',dataType: 'json',
-                                data: form.val(),
-                                success: function(response) {
+                            API.endpoint('/notes/update?id='+note.id).data(form.val()).execute(function(response){
 
-                                    // Update the note from the list
-                                    $('[data-type="note"][data-id="'+note.id+'"]').each(function(){
+                                // Update the note from the list
+                                $('[data-type="note"][data-id="'+note.id+'"]').each(function(){
 
-                                        // Update the subject note
-                                        $(this).find('.note-subject').text(response.record.subject);
+                                    // Update the subject note
+                                    $(this).find('.note-subject').text(response.record.subject);
 
-                                        // Update the content note
-                                        $(this).find('.note-extract').html(response.record.content);
-                                    });
-                                    modal.hide();
-                                }
+                                    // Update the content note
+                                    $(this).find('.note-extract').html(response.record.content);
+                                });
+                                modal.hide();
+                            },function(xhr, status, error){
+                                modal.hide();
                             });
                         },
                     },
@@ -397,44 +389,40 @@ const NoteModalCreate = function(list = null, fields = {}, callback = null){
                             return values;
                         },
                         submit: function(form){
-                            $.ajax({
-                                url: '/api/notes/create',
-                                headers: {'X-CSRF-Authorization': CSRF_KEY},
-                                type: 'POST',dataType: 'json',
-                                data: form.val(),
-                                success: function(response) {
+                            API.endpoint('/notes/create').data(form.val()).execute(function(response){
 
-                                    // Set the record
-                                    const note = response.record;
+                                // Set the record
+                                const note = response.record;
 
-                                    // Check if the list is defined
-                                    if(list){
+                                // Check if the list is defined
+                                if(list){
 
-                                        // Add the note to the list
-                                        list.add(
-                                            {},
-                                            function(item,list){
+                                    // Add the note to the list
+                                    list.add(
+                                        {},
+                                        function(item,list){
 
-                                                // Format the note
-                                                NoteFormat(item, note);
+                                            // Format the note
+                                            NoteFormat(item, note);
 
-                                                // Execute Callback
-                                                if(typeof callback === "function"){
-                                                    callback(note);
-                                                }
-                                            },
-                                        );
-                                    } else {
+                                            // Execute Callback
+                                            if(typeof callback === "function"){
+                                                callback(note);
+                                            }
+                                        },
+                                    );
+                                } else {
 
-                                        // Execute Callback
-                                        if(typeof callback === "function"){
-                                            callback(note);
-                                        }
+                                    // Execute Callback
+                                    if(typeof callback === "function"){
+                                        callback(note);
                                     }
-
-                                    // Close the modal
-                                    modal.hide();
                                 }
+
+                                // Close the modal
+                                modal.hide();
+                            },function(xhr, status, error){
+                                modal.hide();
                             });
                         },
                     },
@@ -448,88 +436,80 @@ const NoteModalCreate = function(list = null, fields = {}, callback = null){
     );
 };
 const NoteModalShare = function(note){
-    $.ajax({
-        url: '/api/auth/users',
-        type: 'GET',dataType: 'json',
-        success: function(response) {
-            var members = response.records;
-            var options = [];
-            for(const [id, member] of Object.entries(members)){
-                if(member.id === USER_ID){
-                    continue;
-                }
-                options.push({id: id, text: member.username});
+    API.endpoint('/auth/users').execute(function(response){
+        var members = response.records;
+        var options = [];
+        for(const [id, member] of Object.entries(members)){
+            if(member.id === USER_ID){
+                continue;
             }
-            builder.Component(
-                "modal",
-                null,
-                {
-                    onEnter: false,
-                    destroy: true,
-                    icon: "share",
-                    title: builder.Locale.get("Share Note"),
-                    cancel: false,
-                    submit: true,
-                    callback: {
-                        submit: function(element,modal){
-                            element.form.submit();
-                        },
+            options.push({id: id, text: member.username});
+        }
+        builder.Component(
+            "modal",
+            null,
+            {
+                onEnter: false,
+                destroy: true,
+                icon: "share",
+                title: builder.Locale.get("Share Note"),
+                cancel: false,
+                submit: true,
+                callback: {
+                    submit: function(element,modal){
+                        element.form.submit();
                     },
                 },
-                function(modal,component){
-                    const componentModal = component;
-                    component.addClass('modal-light');
-                    component.header.tools.find('button').addClass('text-bg-light');
-                    component.footer.submit.addClass('btn-light').removeClass('btn-link').attr({
-                        "style": "border-bottom-right-radius: var(--bs-modal-inner-border-radius) !important;border-bottom-left-radius: var(--bs-modal-inner-border-radius) !important;",
-                    }).text(builder.Locale.get('Share'));
-                    component.footer.submit.icon = $(document.createElement('i')).addClass('bi bi-share me-1').prependTo(component.footer.submit);
-                    component.form = builder.Component(
-                        "form",
-                        component.body,
-                        {
-                            callback:{
-                                val: function(values){
-                                    let users = [];
-                                    for(const [key, value] of Object.entries(values.sharedWith)){
-                                        users.push(parseInt(value));
+            },
+            function(modal,component){
+                const componentModal = component;
+                component.addClass('modal-light');
+                component.header.tools.find('button').addClass('text-bg-light');
+                component.footer.submit.addClass('btn-light').removeClass('btn-link').attr({
+                    "style": "border-bottom-right-radius: var(--bs-modal-inner-border-radius) !important;border-bottom-left-radius: var(--bs-modal-inner-border-radius) !important;",
+                }).text(builder.Locale.get('Share'));
+                component.footer.submit.icon = $(document.createElement('i')).addClass('bi bi-share me-1').prependTo(component.footer.submit);
+                component.form = builder.Component(
+                    "form",
+                    component.body,
+                    {
+                        callback:{
+                            val: function(values){
+                                let users = [];
+                                for(const [key, value] of Object.entries(values.sharedWith)){
+                                    users.push(parseInt(value));
+                                }
+                                return users;
+                            },
+                            submit: function(form){
+                                API.endpoint('/notes/update?id='+note.id).data({sharedWith: form.val()}).execute(function(response){
+                                    if(typeof callback === "function"){
+                                        callback(response);
                                     }
-                                    return users;
-                                },
-                                submit: function(form){
-                                    $.ajax({
-                                        url: '/api/notes/update?id='+note.id,
-                                        headers: {'X-CSRF-Authorization': CSRF_KEY},
-                                        type: 'POST',dataType: 'json',
-                                        data: {sharedWith: form.val()},
-                                        success: function(response) {
-                                            if(typeof callback === "function"){
-                                                callback(response);
-                                            }
-                                            modal.hide();
-                                        }
-                                    });
-                                },
+                                    modal.hide();
+                                },function(xhr, status, error){
+                                    modal.hide();
+                                });
                             },
                         },
-                        function(form,component){
-                            form.add(
-                                {
-                                    name: 'sharedWith',
-                                    label: builder.Locale.get('Share Width'),
-                                    icon: 'person',
-                                    type: 'select2',
-                                    multiple: true,
-                                    options: options,
-                                    value: note.sharedWith,
-                                },
-                            );
-                            modal.show();
-                        },
-                    );
-                }
-            );
-        }
+                    },
+                    function(form,component){
+                        form.add(
+                            {
+                                name: 'sharedWith',
+                                label: builder.Locale.get('Share Width'),
+                                icon: 'person',
+                                type: 'select2',
+                                multiple: true,
+                                options: options,
+                                value: note.sharedWith,
+                            },
+                        );
+                        modal.show();
+                    },
+                );
+            }
+        );
     });
 };
 const NoteModalDelete = function(note){
@@ -546,27 +526,25 @@ const NoteModalDelete = function(note){
             submit: true,
             callback: {
                 submit: function(element,modal){
-                    $.ajax({
-                        url: '/api/notes/delete?id='+note.id,
-                        type: 'GET',dataType: 'json',
-                        success: function(response) {
-                            // Remove the note from the list
-                            $('[data-type="note"][data-id="'+note.id+'"]').each(function(){
+                    API.endpoint('/notes/delete?id='+note.id).execute(function(response){
+                        // Remove the note from the list
+                        $('[data-type="note"][data-id="'+note.id+'"]').each(function(){
 
-                                // Check if element is a modal
-                                if($(this).hasClass('modal')){
+                            // Check if element is a modal
+                            if($(this).hasClass('modal')){
 
-                                    // Remove the backdrop which should be the element directly after the modal
-                                    if($(this).next().hasClass('modal-backdrop')){
-                                        $(this).next().remove();
-                                    }
+                                // Remove the backdrop which should be the element directly after the modal
+                                if($(this).next().hasClass('modal-backdrop')){
+                                    $(this).next().remove();
                                 }
+                            }
 
-                                // Remove the element
-                                $(this).remove();
-                            });
-                            modal.hide();
-                        }
+                            // Remove the element
+                            $(this).remove();
+                        });
+                        modal.hide();
+                    },function(xhr, status, error){
+                        modal.hide();
                     });
                 },
             },
@@ -595,28 +573,26 @@ const NoteModalArchive = function(note){
             submit: true,
             callback: {
                 submit: function(element,modal){
-                    $.ajax({
-                        url: '/api/notes/archive?id='+note.id,
-                        type: 'GET',dataType: 'json',
-                        success: function(response) {
+                    API.endpoint('/notes/archive?id='+note.id).execute(function(response){
 
-                            // Remove the note from the list
-                            $('[data-type="note"][data-id="'+note.id+'"]').each(function(){
+                        // Remove the note from the list
+                        $('[data-type="note"][data-id="'+note.id+'"]').each(function(){
 
-                                // Check if element is a modal
-                                if($(this).hasClass('modal')){
+                            // Check if element is a modal
+                            if($(this).hasClass('modal')){
 
-                                    // Remove the backdrop which should be the element directly after the modal
-                                    if($(this).next().hasClass('modal-backdrop')){
-                                        $(this).next().remove();
-                                    }
+                                // Remove the backdrop which should be the element directly after the modal
+                                if($(this).next().hasClass('modal-backdrop')){
+                                    $(this).next().remove();
                                 }
+                            }
 
-                                // Remove the element
-                                $(this).remove();
-                            });
-                            modal.hide();
-                        }
+                            // Remove the element
+                            $(this).remove();
+                        });
+                        modal.hide();
+                    },function(xhr, status, error){
+                        modal.hide();
                     });
                 },
             },

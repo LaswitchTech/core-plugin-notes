@@ -38,7 +38,6 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
 
         // Set an Update Callback
         this._properties.callback.update = function(feed, post){
-            console.log('Notes updated:', feed, post);
             if(post.data.isPublic){
                 post.controls.share.hide();
             } else {
@@ -113,26 +112,15 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
         } else {
 
             // Retrieve Notes
-            $.ajax({
-                url: '/api/notes/fetchAll',
-                headers: {'X-CSRF-Authorization': CSRF_KEY},
-                type: 'POST',dataType: 'json',
-                data: {
-                    conditions: [
-                        {key: 'targetTable', operator: '=', value: this._properties.targetTable},
-                        {key: 'targetId', operator: '=', value: this._properties.targetId},
-                        {key: 'isArchived', operator: '<>', value: 1},
-                    ]
-                },
-                error: function(xhr, status, error) {
-                    console.error('Error fetching data:', status, error);
-                },
-                success: function(response) {
-
-                    // Add Feed Posts
-                    for(const [key, record] of Object.entries(response.records)){
-                        self.add(record);
-                    }
+            API.endpoint('/notes/fetchAll').data({
+                conditions: [
+                    {key: 'targetTable', operator: '=', value: this._properties.targetTable},
+                    {key: 'targetId', operator: '=', value: this._properties.targetId},
+                    {key: 'isArchived', operator: '<>', value: 1},
+                ]
+            }).execute(function(response){
+                for(const [key, record] of Object.entries(response.records)){
+                    self.add(record);
                 }
             });
         }
@@ -245,19 +233,11 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
                                 modal.spinner(true);
 
                                 // AJAX Request - Create the note
-                                $.ajax({
-                                    url: '/api/notes/create',
-                                    headers: {'X-CSRF-Authorization': CSRF_KEY},
-                                    type: 'POST',dataType: 'json',
-                                    data: form.val(),
-                                    success: function(response) {
-
-                                        // Add the note
-                                        self.add(response.record);
-
-                                        // Close the modal
-                                        modal.hide();
-                                    }
+                                API.endpoint('/notes/create').data(form.val()).execute(function(response){
+                                    self.add(response.record);
+                                    modal.hide();
+                                },function(xhr, status, error){
+                                    modal.hide();
                                 });
                             },
                         }
@@ -337,105 +317,100 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
                                 const parent = component.dialog;
 
                                 // Retrieve the note data
-                                $.ajax({
-                                    url: '/api/notes/fetch?id='+post.data.id,
-                                    type: 'GET',dataType: 'json',
-                                    success: function(response) {
+                                API.endpoint('/notes/fetch?id='+post.data.id).execute(function(response){
 
-                                        // Reset post data
-                                        post.data = response.record;
+                                    // Reset post data
+                                    post.data = response.record;
 
-                                        // Create the Form
-                                        self._builder.Utility(
-                                            'form',
-                                            component.body,
-                                            {
-                                                callback: {
-                                                    val: function(values){
-                                                        values.isPublic = values.isPublic ? 0 : 1;
-                                                        return values;
+                                    // Create the Form
+                                    self._builder.Utility(
+                                        'form',
+                                        component.body,
+                                        {
+                                            callback: {
+                                                val: function(values){
+                                                    values.isPublic = values.isPublic ? 0 : 1;
+                                                    return values;
+                                                },
+                                                submit: function(form){
+
+                                                    // Show the modal spinner
+                                                    modal.spinner(true);
+
+                                                    // Update the note
+                                                    API.endpoint('/notes/update?id='+response.record.id).data(form.val()).execute(function(response){
+
+                                                        // Update the post data
+                                                        post.data = response.record;
+
+                                                        // Update the post
+                                                        post.header.title.html(self._builder.Parser.parse(response.record.subject));
+                                                        post.content.html(response.record.content);
+                                                        post.controls.share.toggle(post.data.isPublic);
+
+                                                        // Hide the modal
+                                                        modal.hide();
+                                                    },function(xhr, status, error){
+                                                        modal.hide();
+                                                    });
+                                                },
+                                            }
+                                        },
+                                        function(form,component){
+
+                                            // Add event listener on the modal submit button
+                                            parent.content.footer.submit.click(function(e){
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                form.submit();
+                                            });
+
+                                            // subject
+                                            form.add(
+                                                'text',
+                                                {
+                                                    name: 'subject',
+                                                    placeholder: self._builder.Locale.get('Enter subject'),
+                                                    value: response.record.subject,
+                                                    class: {
+                                                        component: 'bg-gray-200 p-3 py-2 rounded-0 border-bottom',
                                                     },
-                                                    submit: function(form){
+                                                },
+                                            );
 
-                                                        // Show the modal spinner
-                                                        modal.spinner(true);
-
-                                                        // Update the note
-                                                        $.ajax({
-                                                            url: '/api/notes/update?id='+response.record.id,
-                                                            headers: {'X-CSRF-Authorization': CSRF_KEY},
-                                                            type: 'POST',dataType: 'json',
-                                                            data: form.val(),
-                                                            success: function(response) {
-
-                                                                // Update the post data
-                                                                post.data = response.record;
-
-                                                                // Update the post
-                                                                post.header.title.html(self._builder.Parser.parse(response.record.subject));
-                                                                post.content.html(response.record.content);
-                                                                post.controls.share.toggle(post.data.isPublic);
-
-                                                                // Hide the modal
-                                                                modal.hide();
-                                                            }
-                                                        });
+                                            // content
+                                            form.add(
+                                                'mce',
+                                                {
+                                                    name: 'content',
+                                                    placeholder: self._builder.Locale.get('Write your note here...'),
+                                                    value: response.record.content,
+                                                    class: {
+                                                        component: 'rounded-0',
                                                     },
-                                                }
-                                            },
-                                            function(form,component){
+                                                },
+                                            );
 
-                                                // Add event listener on the modal submit button
-                                                parent.content.footer.submit.click(function(e){
-                                                    e.preventDefault();
-                                                    e.stopPropagation();
-                                                    form.submit();
-                                                });
-
-                                                // subject
-                                                form.add(
-                                                    'text',
-                                                    {
-                                                        name: 'subject',
-                                                        placeholder: self._builder.Locale.get('Enter subject'),
-                                                        value: response.record.subject,
-                                                        class: {
-                                                            component: 'bg-gray-200 p-3 py-2 rounded-0 border-bottom',
-                                                        },
+                                            // isPublic
+                                            form.add(
+                                                'switch',
+                                                {
+                                                    name: 'isPublic',
+                                                    label: builder.Locale.get('Private'),
+                                                    value: response.record.isPublic ? false : true,
+                                                    class: {
+                                                        component: 'bg-gray-200 p-3 py-2 rounded-0 border-top',
                                                     },
-                                                );
+                                                },
+                                            );
 
-                                                // content
-                                                form.add(
-                                                    'mce',
-                                                    {
-                                                        name: 'content',
-                                                        placeholder: self._builder.Locale.get('Write your note here...'),
-                                                        value: response.record.content,
-                                                        class: {
-                                                            component: 'rounded-0',
-                                                        },
-                                                    },
-                                                );
-
-                                                // isPublic
-                                                form.add(
-                                                    'switch',
-                                                    {
-                                                        name: 'isPublic',
-                                                        label: builder.Locale.get('Private'),
-                                                        value: response.record.isPublic ? false : true,
-                                                        class: {
-                                                            component: 'bg-gray-200 p-3 py-2 rounded-0 border-top',
-                                                        },
-                                                    },
-                                                );
-
-                                                // Resolve the promise
-                                                resolve();
-                                            },
-                                        );
-                                    }
+                                            // Resolve the promise
+                                            resolve();
+                                        },
+                                    );
+                                },function(xhr, status, error){
+                                    modal.hide();
+                                    reject(error);
                                 });
                             } catch(e) { reject(e); }
                         });
@@ -474,100 +449,88 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
                                 const parent = component.dialog;
 
                                 // Retrieve the note data
-                                $.ajax({
-                                    url: '/api/auth/users',
-                                    type: 'GET',dataType: 'json',
-                                    success: function(response) {
+                                API.endpoint('/auth/users').execute(function(response){
 
-                                        // Generate options from users
-                                        var members = response.records;
-                                        var options = [];
-                                        for(const [id, member] of Object.entries(members)){
-                                            if(member.id === USER_ID){
-                                                continue;
-                                            }
-                                            options.push({id: id, text: member.username});
+                                    // Generate options from users
+                                    var members = response.records;
+                                    var options = [];
+                                    for(const [id, member] of Object.entries(members)){
+                                        if(member.id === USER_ID){
+                                            continue;
                                         }
+                                        options.push({id: id, text: member.username});
+                                    }
 
-                                        // Retrieve the note data
-                                        $.ajax({
-                                            url: '/api/notes/fetch?id='+post.data.id,
-                                            type: 'GET',dataType: 'json',
-                                            success: function(response) {
+                                    // Retrieve the note data
+                                    API.endpoint('/notes/fetch?id='+post.data.id).execute(function(response){
 
-                                                // Reset post data
-                                                post.data = response.record;
+                                        // Reset post data
+                                        post.data = response.record;
 
-                                                // Create the Form
-                                                self._builder.Utility(
-                                                    'form',
-                                                    component.body,
-                                                    {
-                                                        callback: {
-                                                            val: function(values){
-                                                                let users = [];
-                                                                for(const [key, value] of Object.entries(values.sharedWith)){
-                                                                    users.push(parseInt(value));
-                                                                }
-                                                                return users.length > 0 ? {sharedWith: users} : {sharedWith: '[]'};
-                                                            },
-                                                            submit: function(form){
-
-                                                                // Show the modal spinner
-                                                                modal.spinner(true);
-
-                                                                console.log(form.val());
-
-                                                                // Update the note
-                                                                $.ajax({
-                                                                    url: '/api/notes/update?id='+response.record.id,
-                                                                    headers: {'X-CSRF-Authorization': CSRF_KEY},
-                                                                    type: 'POST',dataType: 'json',
-                                                                    data: form.val(),
-                                                                    success: function(response) {
-
-                                                                        // Update the post data
-                                                                        post.data = response.record;
-
-                                                                        // Hide the modal
-                                                                        modal.hide();
-                                                                    }
-                                                                });
-                                                            },
+                                        // Create the Form
+                                        self._builder.Utility(
+                                            'form',
+                                            component.body,
+                                            {
+                                                callback: {
+                                                    val: function(values){
+                                                        let users = [];
+                                                        for(const [key, value] of Object.entries(values.sharedWith)){
+                                                            users.push(parseInt(value));
                                                         }
+                                                        return users.length > 0 ? {sharedWith: users} : {sharedWith: '[]'};
                                                     },
-                                                    function(form,component){
+                                                    submit: function(form){
 
-                                                        // Add event listener on the modal submit button
-                                                        parent.content.footer.submit.click(function(e){
-                                                            e.preventDefault();
-                                                            e.stopPropagation();
-                                                            form.submit();
+                                                        // Show the modal spinner
+                                                        modal.spinner(true);
+
+                                                        // Update the note
+                                                        API.endpoint('/notes/update?id='+response.record.id).data(form.val()).execute(function(response){
+                                                            post.data = response.record;
+                                                            modal.hide();
+                                                        },function(xhr, status, error){
+                                                            modal.hide();
                                                         });
+                                                    },
+                                                }
+                                            },
+                                            function(form,component){
 
-                                                        // sharedWith
-                                                        form.add(
-                                                            'select2',
-                                                            {
-                                                                name: 'sharedWith',
-                                                                placeholder: self._builder.Locale.get('Select user(s) to share with'),
-                                                                value: response.record.sharedWith,
-                                                                options: options,
-                                                                multiple: true,
-                                                                allowClear: true,
-                                                                class: {
-                                                                    component: 'bg-gray-200 p-3 py-2 rounded-0',
-                                                                },
-                                                            },
-                                                        );
+                                                // Add event listener on the modal submit button
+                                                parent.content.footer.submit.click(function(e){
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    form.submit();
+                                                });
 
-                                                        // Resolve the promise
-                                                        resolve();
+                                                // sharedWith
+                                                form.add(
+                                                    'select2',
+                                                    {
+                                                        name: 'sharedWith',
+                                                        placeholder: self._builder.Locale.get('Select user(s) to share with'),
+                                                        value: response.record.sharedWith,
+                                                        options: options,
+                                                        multiple: true,
+                                                        allowClear: true,
+                                                        class: {
+                                                            component: 'bg-gray-200 p-3 py-2 rounded-0',
+                                                        },
                                                     },
                                                 );
-                                            }
-                                        });
-                                    },
+
+                                                // Resolve the promise
+                                                resolve();
+                                            },
+                                        );
+                                    },function(xhr, status, error){
+                                        modal.hide();
+                                        reject(error);
+                                    });
+                                },function(xhr, status, error){
+                                    modal.hide();
+                                    reject(error);
                                 });
                             } catch(e) { reject(e); }
                         });
@@ -605,17 +568,11 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
                         modal.spinner(true);
 
                         // AJAX Request - Archive the note
-                        $.ajax({
-                            url: '/api/notes/archive?id='+post.data.id,
-                            type: 'GET',dataType: 'json',
-                            success: function(response) {
-
-                                // Remove the note
-                                post.remove();
-
-                                // Close the modal
-                                modal.hide();
-                            }
+                        API.endpoint('/notes/archive?id='+post.data.id).execute(function(response){
+                            post.remove();
+                            modal.hide();
+                        },function(xhr, status, error){
+                            modal.hide();
                         });
                     },
                 },
