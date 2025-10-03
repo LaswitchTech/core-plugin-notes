@@ -171,8 +171,8 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
         // Set Self
         const self = this;
 
-        // Check if we rendered
-        if(!this._properties.render || this._feed === null){
+        // Check if we should render
+        if(!this._properties.render){
             return;
         }
 

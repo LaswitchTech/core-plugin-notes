@@ -15,11 +15,11 @@ function process_function_NoteCreate(task, value, callback = null){
     }
 
     // Open the Create Note Modal
-    builder.Widget('notes',{render: false,targetTable: targetTable,targetId: targetId}).create(function(note){
+    builder.Widget('notes',{render: false,targetTable: targetTable,targetId: targetId}).create(function(response){
 
         // Execute Callback
         if(typeof callback === "function"){
-            callback(task, note);
+            callback(task, response);
         }
     });
 };
