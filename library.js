@@ -15,6 +15,7 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
             iframed: false,
             interval: 10000,
             autoStart: false,
+            render: true,
             callback: {},
         };
     }
@@ -23,6 +24,11 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
 
         // Set Self
         const self = this;
+
+        // Check if we should render
+        if(!this._properties.render){
+            return;
+        }
 
         // Create Component
         this._component = $(document.createElement('div')).attr({
@@ -165,6 +171,11 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
         // Set Self
         const self = this;
 
+        // Check if we rendered
+        if(!this._properties.render || this._feed === null){
+            return;
+        }
+
         // Add Record
         this.feed().add(record,function(post){
             post.find('.avatar').addClass('cursor-pointer')
@@ -193,7 +204,7 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
         })
     }
 
-    create(){
+    create(callback = null){
 
         // Set Self
         const self = this;
@@ -235,6 +246,9 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
                                 // AJAX Request - Create the note
                                 API.endpoint('/notes/create').data(form.val()).execute(function(response){
                                     self.add(response.record);
+                                    if(typeof callback === 'function'){
+                                        callback(response.record);
+                                    }
                                     modal.hide();
                                 },function(xhr, status, error){
                                     modal.hide();

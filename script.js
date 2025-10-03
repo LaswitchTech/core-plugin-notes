@@ -677,7 +677,7 @@ function process_function_NoteCreate(task, value, callback = null){
     }
 
     // Open the Create Note Modal
-    NoteModalCreate(null,{subject: task.label,targetTable: targetTable, targetId: targetId},function(note){
+    builder.Widget('notes',{render: false,targetTable: targetTable,targetId: targetId}).create(function(note){
 
         // Execute Callback
         if(typeof callback === "function"){
