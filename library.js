@@ -65,7 +65,7 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
                 if(self._properties.targetTable !== null && self._properties.targetId !== null){
 
                     // Add a clickable form input
-                    component.inputGroup = $(document.createElement('div')).addClass('bg-gray-200 p-3 py-2 border-bottom cursor-pointer').prependTo(component);
+                    component.inputGroup = $(document.createElement('div')).addClass('bg-gray-200 p-3 py-2 border-bottom cursor-pointer shadow').prependTo(component);
                     component.inputGroup.input = $(document.createElement('input')).attr({
                         'type': 'text',
                         'class': 'form-control cursor-pointer',
