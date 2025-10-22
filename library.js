@@ -180,7 +180,7 @@ builder.add('widgets','notes', class extends builder.ComponentClass {
         this.feed().add(record,function(post){
             post.find('.avatar').addClass('cursor-pointer')
             post.find('.owner').off().click(function(e){
-                self._builder.Widget('vcard',{data: record.owner.vcard});
+                self._builder.Widget('vcard',{data: record.owner.vcard.id});
             });
             if(record.isPublic){
                 if(typeof post.controls.share !== 'undefined'){
